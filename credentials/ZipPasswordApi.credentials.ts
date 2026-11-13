@@ -25,7 +25,7 @@ export class ZipPasswordApi implements ICredentialType {
 			default: '',
 			required: true,
 			description:
-				'The password the ZIP archive was encrypted with. It is used for both WinZip AES and legacy ZipCrypto entries.',
+				'The password the ZIP archive was encrypted with. It is used for WinZip AES, PKWARE strong encryption and legacy ZipCrypto entries.',
 		},
 	];
 }

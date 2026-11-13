@@ -7,6 +7,7 @@ import {
 } from '@zip.js/zip.js';
 import type { IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
 import { classifyZipError, extractError } from './errors';
+import { isStrongEncrypted, readStrongEntry } from './strongEncryption';
 
 /** The signature every .7z file starts with. */
 const SEVEN_ZIP_SIGNATURE = Buffer.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]);
@@ -48,10 +49,14 @@ export async function extract(
 		const items: INodeExecutionData[] = [];
 		for (const entry of selectEntries(entries, expectedEntryName)) {
 			let bytes: Uint8Array;
-			try {
-				bytes = await entry.getData(new Uint8ArrayWriter());
-			} catch (error) {
-				throw classifyZipError(error, password, entry);
+			if (isStrongEncrypted(entry)) {
+				bytes = await readStrongEntry(entry, password);
+			} else {
+				try {
+					bytes = await entry.getData(new Uint8ArrayWriter());
+				} catch (error) {
+					throw classifyZipError(error, password, entry);
+				}
 			}
 			// Named without its folder path; some Windows tools separate folders with `\`.
 			const fileName = entry.filename.split(/[\\/]/).pop() || entry.filename;

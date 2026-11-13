@@ -139,6 +139,7 @@ password=$(node -p "require('$REPO_ROOT/test/fixtures/smoke/credentials.json').f
 node "$REPO_ROOT/test/smoke/make-archives.mjs" "$REPO_ROOT/.smoke-out/input" "$password"
 run_workflow encryptedZipSmokeAes256 extracted-round-trip aes256.bin
 run_workflow encryptedZipSmokeZipCrypto extracted-round-trip zipcrypto.bin
+run_workflow encryptedZipSmokeStrongAes256 extracted-round-trip strong-aes256.bin
 run_workflow encryptedZipSmokeWrongPassword wrong-password-error -
 
 log "Smoke lane passed"

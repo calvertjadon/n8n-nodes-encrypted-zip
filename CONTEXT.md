@@ -24,8 +24,12 @@ The option that pins an archive to exactly one file entry with exactly that entr
 ### Encryption
 
 **WinZip AES**:
-AES-128, AES-192 or AES-256 entry encryption with an HMAC authentication code, as written by WinZip and 7-Zip (`pkAES-256`).
-_Avoid_: AE-x, strong encryption (PKWARE's unsupported method)
+AES-128, AES-192 or AES-256 entry encryption with an HMAC authentication code, as written by WinZip and 7-Zip (`AES-256` in 7-Zip's listing).
+_Avoid_: AE-x
+
+**PKWARE strong encryption**:
+PKWARE's own AES entry encryption from the ZIP specification's Strong Encryption Specification, shown by 7-Zip as `pkAES-256` and `StrongCrypto`. It has no authentication code. Supported with a password and AES only; its 3DES, RC2 and RC4 algorithms, certificate recipients and central directory encryption are not.
+_Avoid_: SES, pkAES (as a term), strong AES
 
 **ZipCrypto**:
 The legacy PKWARE stream cipher. Weak, and supported only so existing archives stay readable.

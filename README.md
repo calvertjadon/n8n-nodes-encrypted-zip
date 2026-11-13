@@ -4,7 +4,8 @@ Extract password-protected ZIP archives inside n8n. The password stays in an n8n
 
 The package provides one node, **Encrypted ZIP**, with one operation, **Extract**. It reads a ZIP archive from a binary field and outputs every file in it as a separate item with binary data. Supported encryption:
 
-- WinZip AES-128, AES-192 and AES-256, shown by 7-Zip as `pkAES-256`
+- WinZip AES-128, AES-192 and AES-256, shown by 7-Zip as `AES-256`
+- PKWARE strong encryption with a password and AES-128, AES-192 or AES-256, shown by 7-Zip as `pkAES-256` and `StrongCrypto`. Such entries must use Store or Deflate compression.
 - Legacy ZipCrypto
 
 `.7z` archives are not supported, and the node does not create archives.
@@ -79,7 +80,7 @@ Create a **ZIP Password** credential for each archive password.
 |---|---|
 | Password | The password the archive was encrypted with |
 
-n8n stores the password encrypted, and it never appears in workflow parameters, version history or exports. The same field opens both WinZip AES and ZipCrypto entries.
+n8n stores the password encrypted, and it never appears in workflow parameters, version history or exports. The same field opens WinZip AES, PKWARE strong encryption and ZipCrypto entries.
 
 The credential has no **Test** button: a ZIP password can only be checked against an archive. The first execution reports a wrong password clearly.
 
@@ -131,7 +132,7 @@ Every error names the input item. None includes the password.
 | Failure | Message starts with |
 |---|---|
 | Wrong password | `The password in the 'ZIP Password' credential does not open this archive` |
-| Unsupported encryption, such as PKWARE strong encryption | `The archive uses an encryption method this node cannot decrypt` |
+| Unsupported encryption, such as PKWARE strong encryption with 3DES or certificates | `The archive uses an encryption method this node cannot decrypt` |
 | Failed CRC-32 or AES authentication check | `An entry failed its integrity check` |
 | Damaged or non-ZIP input | `The input is not a readable ZIP archive` |
 | `.7z` input | `The input is a 7z archive, which this node does not read` |
@@ -142,6 +143,8 @@ Every error names the input item. None includes the password.
 An archive with no file entries always fails, so an empty delivery cannot pass silently as zero items.
 
 ZipCrypto checks only one byte of the password, so roughly one wrong password in 256 passes that check. The CRC-32 check then fails, and the error says the password may be wrong.
+
+PKWARE strong encryption has no authentication code: the node checks the password against the archive's password verification data, then checks the decrypted entry against its CRC-32.
 
 The node follows n8n's **On Error** setting. With Continue selected, a failing input item produces an error item and later items continue.
 
@@ -164,7 +167,8 @@ The dependency is deliberate and pinned. Releases are published from GitHub Acti
 - The package is for self-hosted n8n. n8n Cloud cannot install it.
 - The node buffers the whole archive and each extracted file in memory.
 - Extract only: the node does not create or modify archives.
-- `.7z`, split archives and PKWARE strong encryption are not supported.
+- `.7z` and split archives are not supported.
+- PKWARE strong encryption is supported only with a password and AES. 3DES, RC2, RC4, certificate recipients and an encrypted central directory are not supported, and strong-encrypted entries compressed with Deflate64 are not read.
 
 ## Development
 
@@ -182,7 +186,7 @@ npm test
 npm run smoke
 ```
 
-Unit tests generate their archives with synthetic content, and no fixture holds real data. The smoke test installs the packed package into a real n8n container. It extracts freshly generated AES-256 and ZipCrypto archives and compares the extracted bytes with the originals. It also checks that a wrong password fails without either password appearing in n8n's output.
+Unit tests generate their archives with synthetic content, and no fixture holds real data. Archives with PKWARE strong encryption come from `test/helpers/strongArchive.ts`, written from the ZIP specification because zip.js cannot write them; 7-Zip 26.01 extracts its output. The smoke test installs the packed package into a real n8n container. It extracts freshly generated AES-256, PKWARE strong encryption AES-256 and ZipCrypto archives and compares the extracted bytes with the originals. It also checks that a wrong password fails without either password appearing in n8n's output.
 
 Start an n8n development instance:
 

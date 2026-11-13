@@ -2,11 +2,13 @@
 // archives holding it. Nothing here is real member data, and nothing is committed.
 //
 // Usage: node test/smoke/make-archives.mjs <output-dir> <password>
+// Needs Node.js 22.18 or later, which runs the TypeScript helper by type stripping.
 
 import { Uint8ArrayReader, Uint8ArrayWriter, ZipWriter } from '@zip.js/zip.js';
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { makeStrongArchive } from '../helpers/strongArchive.ts';
 
 const [outputDir, password] = process.argv.slice(2);
 if (!outputDir || !password) {
@@ -30,3 +32,7 @@ mkdirSync(outputDir, { recursive: true });
 writeFileSync(join(outputDir, 'synthetic.bin'), content);
 writeFileSync(join(outputDir, 'aes256.zip'), await archive({ encryptionStrength: 3 }));
 writeFileSync(join(outputDir, 'zipcrypto.zip'), await archive({ zipCrypto: true }));
+writeFileSync(
+	join(outputDir, 'strong-aes256.zip'),
+	await makeStrongArchive('synthetic.bin', content, password),
+);

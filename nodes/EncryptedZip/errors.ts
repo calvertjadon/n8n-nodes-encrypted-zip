@@ -1,4 +1,5 @@
 import {
+	ERR_ENCRYPTED_CENTRAL_DIRECTORY,
 	ERR_INVALID_AUTHENTICATION_CODE,
 	ERR_INVALID_COMPRESSED_DATA,
 	ERR_INVALID_CRC32,
@@ -29,7 +30,7 @@ const ERROR_COPY = {
 	unsupportedEncryption: {
 		message: 'The archive uses an encryption method this node cannot decrypt',
 		description:
-			'Supported methods are WinZip AES-128, AES-192 and AES-256, and legacy ZipCrypto. PKWARE strong encryption is not supported.',
+			'Supported methods are WinZip AES-128, AES-192 and AES-256, PKWARE strong encryption with a password and AES-128, AES-192 or AES-256, and legacy ZipCrypto.',
 	},
 	unsupportedCompression: {
 		message: 'The archive uses a compression method this node cannot read',
@@ -119,6 +120,11 @@ export function classifyZipError(
 	}
 	if (reason === ERR_UNSUPPORTED_ENCRYPTION) {
 		return extractError('unsupportedEncryption', { suffix });
+	}
+	if (reason === ERR_ENCRYPTED_CENTRAL_DIRECTORY) {
+		return extractError('unsupportedEncryption', {
+			detail: 'This archive also encrypts its list of entries, which the node cannot read.',
+		});
 	}
 	if (reason === ERR_UNSUPPORTED_COMPRESSION) {
 		return extractError('unsupportedCompression', { suffix });
