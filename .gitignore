@@ -1,0 +1,8 @@
+dist
+node_modules
+
+# smoke lane output
+.smoke-out/
+
+# packed tarballs
+*.tgz

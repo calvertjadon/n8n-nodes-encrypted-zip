@@ -1,0 +1,133 @@
+name: Release
+
+# Single atomic run: gate on the full CI, then bump, tag, create the GitHub
+# Release and publish to npm with OIDC provenance. GITHUB_TOKEN-pushed tags do
+# not trigger other workflows, which is why this is one workflow and not two.
+#
+# The workflow filename is bound to the npm Trusted Publisher and is immutable:
+# changing it means deleting and recreating the publisher.
+#
+# Partial-failure repair: re-run with `npx release-it --no-increment` locally
+# after fixing the cause (the tag and version bump already happened).
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  # release-it comments on the issues named in the changelog.
+  issues: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      # prepublishOnly (`n8n-node prerelease`) rejects any publish without this.
+      RELEASE_MODE: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      # Trusted publishing needs npm >= 11.5.1 on Node >= 22.14.0.
+      - name: Update npm
+        run: npm install -g npm@latest
+
+      # --ignore-scripts skips native builds of the dev-only toolchain
+      # (n8n-workflow pulls isolated-vm, which fails to compile on new Node
+      # majors and costs minutes); nothing the suite runs needs them.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      # Same lint gate as the fast lane: the scaffold lint minus the one
+      # Cloud-conformance rule this package cannot satisfy (runtime dependency).
+      - name: Lint
+        run: npm run lint:ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      # release-it commits and tags the version bump; runners have no git identity.
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # Required status checks prevent the workflow token from landing
+      # release-it's generated commit on `main`. Tags and GitHub Releases are
+      # therefore the published metadata source; the branch keeps explicit
+      # development-only package and changelog markers.
+      - name: Release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # `main` carries a development-only version marker. Base each release
+          # on the last published tag so versioning remains monotonic.
+          last_tag=$(git describe --tags --abbrev=0 --match '[0-9]*' 2>/dev/null || true)
+          if [ -n "$last_tag" ]; then
+            npm version "$last_tag" --no-git-tag-version --allow-same-version >/dev/null
+          fi
+
+          # The released tag has to point at a commit on `main` (this run's head),
+          # not at release-it's local bump commit, which never lands there. A tag
+          # off the trunk is invisible to `git describe`, which the next release
+          # uses to derive its base version.
+          trunk=$(git rev-parse HEAD)
+
+          before=$(node -p "require('./package.json').version")
+          # release-it bumps, writes the changelog, commits and tags; the publish
+          # is run here instead so its output is visible when it goes wrong.
+          npx release-it --ci --git.push=false --github.release=false --npm.publish=false
+          version=$(node -p "require('./package.json').version")
+          if [ "$before" = "$version" ]; then
+            echo "nothing releasable in this push"
+            exit 0
+          fi
+          echo "released=$version" >> "$GITHUB_OUTPUT"
+
+          if ! npm publish; then
+            echo "npm publish failed — continuing only if the version is already there"
+          fi
+          # Trusted publishing can finish before npm exposes the version through
+          # registry reads. Give npm up to 15 minutes to finish processing it.
+          published=''
+          for _ in $(seq 1 150); do
+            published=$(npm view "n8n-nodes-encrypted-zip@${version}" version 2>/dev/null || true)
+            [ "$published" = "$version" ] && break
+            sleep 6
+          done
+          if [ "$published" != "$version" ]; then
+            echo "npm does not report ${version} after publishing" >&2
+            exit 1
+          fi
+          echo "npm reports ${version}"
+
+          # The changelog release-it just wrote becomes the release notes.
+          awk '/^## /{section++} section==1' CHANGELOG.md > /tmp/release-notes.md
+
+          # Anchor the published tag to `main`, not release-it's local bump
+          # commit, which cannot pass the branch's required status checks.
+          # The next run derives its base from this reachable tag.
+          git tag --force "${version}" "$trunk"
+          git push --force origin "refs/tags/${version}"
+          gh release create "${version}" --title "${version}" --notes-file /tmp/release-notes.md
